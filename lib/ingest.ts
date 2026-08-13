@@ -1,6 +1,7 @@
 import { createAdminClient } from "./supabase/admin";
 import { chunkPages } from "./chunking";
 import { embedBatched } from "./embeddings";
+import { extractFacts } from "./extraction";
 import { extractPdf } from "./pdf";
 
 /**
@@ -49,6 +50,18 @@ export async function ingestPdf(opts: {
       .from("papers")
       .update({ status: "ready", page_count: pageCount })
       .eq("id", paperId);
+
+    // Fact extraction is best-effort — don't fail ingestion if it errors.
+    try {
+      const { data: paperRow } = await db
+        .from("papers")
+        .select("abstract")
+        .eq("id", paperId)
+        .single();
+      await extractFacts(paperId, userId, pages, paperRow?.abstract);
+    } catch (err) {
+      console.warn(`Fact extraction failed for paper ${paperId}:`, err);
+    }
 
     return { chunkCount: rows.length, pageCount };
   } catch (err) {

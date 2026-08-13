@@ -4,16 +4,34 @@ import { fetchPdf, ingestPdf } from "@/lib/ingest";
 import { resolveIdentifier } from "@/lib/sources/resolve";
 import { fail } from "@/lib/http";
 import type { SearchResult } from "@/lib/types";
+import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 export const maxDuration = 300;
+
+async function markPaperFailed(
+  supabase: SupabaseClient,
+  user: User,
+  paperId: string,
+  message: string
+) {
+  await supabase
+    .from("papers")
+    .update({ status: "failed", error: message })
+    .eq("id", paperId)
+    .eq("user_id", user.id);
+}
 
 /**
  * Import a paper found via search. Accepts either a full SearchResult (from the
  * search endpoint) or a bare `identifier` string to resolve first.
  */
 export async function POST(request: Request) {
+  let paperId: string | undefined;
+  let supabase: SupabaseClient | undefined;
+  let user: User | undefined;
+
   try {
-    const { supabase, user } = await requireUser();
+    ({ supabase, user } = await requireUser());
     const body = (await request.json()) as {
       result?: SearchResult;
       identifier?: string;
@@ -69,18 +87,37 @@ export async function POST(request: Request) {
       .single();
     if (error) throw new Error(error.message);
 
+    paperId = paper.id as string;
+
     const pdf = await fetchPdf(result.pdf_url);
 
     const storagePath = `${user.id}/${paper.id}.pdf`;
-    await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("papers")
       .upload(storagePath, pdf, { contentType: "application/pdf", upsert: true });
-    await supabase.from("papers").update({ storage_path: storagePath }).eq("id", paper.id);
+    if (uploadError) throw new Error(uploadError.message);
+
+    const { error: pathError } = await supabase
+      .from("papers")
+      .update({ storage_path: storagePath })
+      .eq("id", paper.id);
+    if (pathError) throw new Error(pathError.message);
 
     await ingestPdf({ paperId: paper.id, userId: user.id, pdf });
 
-    return NextResponse.json({ paper: { ...paper, status: "ready" } });
+    const { data: updated, error: fetchError } = await supabase
+      .from("papers")
+      .select("*")
+      .eq("id", paper.id)
+      .single();
+    if (fetchError) throw new Error(fetchError.message);
+
+    return NextResponse.json({ paper: updated });
   } catch (err) {
+    if (paperId && supabase && user) {
+      const message = err instanceof Error ? err.message : "Import failed";
+      await markPaperFailed(supabase, user, paperId, message);
+    }
     return fail(err);
   }
 }

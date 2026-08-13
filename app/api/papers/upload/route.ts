@@ -50,7 +50,14 @@ export async function POST(request: Request) {
 
     await ingestPdf({ paperId: paper.id, userId: user.id, pdf: buf });
 
-    return NextResponse.json({ paper: { ...paper, status: "ready" } });
+    const { data: updated, error: fetchError } = await supabase
+      .from("papers")
+      .select("*")
+      .eq("id", paper.id)
+      .single();
+    if (fetchError) throw new Error(fetchError.message);
+
+    return NextResponse.json({ paper: updated });
   } catch (err) {
     return fail(err);
   }

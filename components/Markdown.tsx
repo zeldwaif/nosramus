@@ -35,7 +35,7 @@ export default function Markdown({
         <button
           key={i}
           onClick={() => onCite?.(n)}
-          className="mx-0.5 inline-flex h-[1.15em] min-w-[1.15em] items-center justify-center rounded-[4px] border border-edge bg-surface px-1 align-super text-[0.65em] font-medium text-accent hover:bg-edge"
+          className="mx-0.5 inline-flex h-[1.15em] min-w-[1.15em] items-center justify-center rounded border border-edge bg-elevated px-1 align-super font-mono text-[0.65em] font-medium text-accent transition-colors hover:border-accent/40 hover:shadow-[0_0_8px_rgba(134,239,172,0.2)]"
           title={citations.find((c) => c.n === n)?.paper_title}
         >
           {n}

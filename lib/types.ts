@@ -45,7 +45,16 @@ export interface Message {
   role: "user" | "assistant";
   content: string;
   citations: Citation[];
+  contradictions?: Contradiction[];
   created_at: string;
+}
+
+export interface Contradiction {
+  claim: string;
+  paper_a: string;
+  quote_a: string;
+  paper_b: string;
+  quote_b: string;
 }
 
 export interface Conversation {
@@ -68,4 +77,13 @@ export interface SearchResult {
   doi: string | null;
   url: string | null;
   pdf_url: string | null;
+}
+
+export interface PaperFact {
+  id: string;
+  fact_type: "dataset" | "metric" | "model_size" | "architecture" | "result";
+  key: string;
+  value: string;
+  evidence: string | null;
+  page: number | null;
 }

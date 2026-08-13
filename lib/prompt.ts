@@ -10,6 +10,11 @@ Rules:
 - If the excerpts do not answer the question, say so plainly and explain what is missing. Do not fill gaps from background knowledge without flagging it as outside the provided sources.
 - Distinguish what a paper claims from what it demonstrates. Note sample sizes, effect sizes, and stated limitations when they bear on the answer.
 - When papers disagree, present the disagreement rather than picking a side.
+- If you notice a genuine factual disagreement between the provided excerpts, append a fenced block at the very end of your answer (after all prose and citations):
+
+<contradictions>[{"claim":"...","paper_a":"...","quote_a":"...","paper_b":"...","quote_b":"..."}]</contradictions>
+
+Use a valid JSON array. Use an empty array [] if there are no contradictions. Do not mention this block in your prose.
 - Be concise and precise. Use the field's terminology without padding. Prose by default; lists only when the content is genuinely enumerable.`;
 
 export function buildContext(chunks: RetrievedChunk[]): string {

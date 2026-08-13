@@ -1,0 +1,72 @@
+[
+  {
+    "id": "motivation",
+    "question": "What problem motivated the authors to propose the Transformer architecture instead of recurrent or convolutional sequence models?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["self-attention", "sequential", "parallel", "recurrent", "distance"],
+    "expected_answer_summary": "Recurrent models process tokens sequentially, limiting parallelization and making long-range dependencies harder to learn. The authors propose relying entirely on self-attention to draw global dependencies without recurrence or convolutions, enabling more parallelization."
+  },
+  {
+    "id": "complexity",
+    "question": "What is the computational complexity of self-attention compared to recurrent layers with respect to sequence length?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["O(n", "n^2", "complexity", "self-attention", "recurrent"],
+    "expected_answer_summary": "Self-attention connects all positions with O(n^2 * d) operations per layer, while recurrent layers require O(n * d^2) sequential steps. Self-attention is faster for short sequences but costlier when n is large."
+  },
+  {
+    "id": "multi-head",
+    "question": "How does multi-head attention work in the Transformer?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["head", "linear", "concat", "project", "parallel"],
+    "expected_answer_summary": "Multi-head attention runs h attention functions in parallel on linearly projected queries, keys, and values. The outputs are concatenated and projected again, allowing the model to attend to information from different representation subspaces."
+  },
+  {
+    "id": "bleu-de",
+    "question": "What BLEU score did the Transformer base model achieve on WMT 2014 English-to-German translation?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["28.4", "BLEU", "German", "WMT"],
+    "expected_answer_summary": "The Transformer base model achieved 28.4 BLEU on WMT 2014 English-to-German, improving over the previous best results including ensemble models."
+  },
+  {
+    "id": "bleu-fr",
+    "question": "What BLEU score did the Transformer achieve on WMT 2014 English-to-French translation?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["41.8", "BLEU", "French", "WMT"],
+    "expected_answer_summary": "The Transformer base model achieved 41.8 BLEU on WMT 2014 English-to-French translation at a fraction of the training cost of previous state-of-the-art models."
+  },
+  {
+    "id": "positional",
+    "question": "How does the Transformer inject information about token order or position?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["positional", "sin", "cos", "encoding", "embed"],
+    "expected_answer_summary": "Since the model contains no recurrence or convolution, positional encodings are added to the input embeddings using sine and cosine functions of different frequencies."
+  },
+  {
+    "id": "layers",
+    "question": "How many encoder and decoder layers does the base Transformer model use?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["6", "encoder", "decoder", "layer", "N="],
+    "expected_answer_summary": "The base model uses N=6 identical layers in both the encoder and the decoder stack."
+  },
+  {
+    "id": "d-model",
+    "question": "What is d_model (the model dimension) in the base Transformer configuration?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["512", "d_model", "dimension"],
+    "expected_answer_summary": "The base model uses d_model = 512 for the input/output dimension of the sub-layers."
+  },
+  {
+    "id": "datasets",
+    "question": "Which datasets were used to train and evaluate the machine translation models?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["WMT", "English", "German", "French", "Billion Word"],
+    "expected_answer_summary": "Models were trained and evaluated on WMT 2014 English-German (about 4.5M sentence pairs) and WMT 2014 English-French (36M sentences). English constituency parsing used the Penn Treebank and semi-supervised setup with the BerkeleyParser corpus."
+  },
+  {
+    "id": "scaled-dot-product",
+    "question": "What is scaled dot-product attention and why is the scaling factor used?",
+    "paper_arxiv_id": "1706.03762",
+    "expected_keywords": ["softmax", "sqrt", "d_k", "dot-product", "scale"],
+    "expected_answer_summary": "Attention is computed as softmax(QK^T / sqrt(d_k))V. The dot products grow large in magnitude for large d_k, pushing softmax into regions with extremely small gradients, so scaling by 1/sqrt(d_k) counteracts this."
+  }
+]

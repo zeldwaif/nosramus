@@ -1,7 +1,84 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Paper, SearchResult } from "@/lib/types";
+import type { Paper, PaperFact, SearchResult } from "@/lib/types";
+
+function StatusBadge({ status }: { status: Paper["status"] }) {
+  if (status === "ready") return null;
+  const styles =
+    status === "failed"
+      ? "text-red-400"
+      : "text-muted";
+  const label =
+    status === "failed"
+      ? "Failed"
+      : status === "processing"
+        ? "Processing"
+        : "Pending";
+  return (
+    <span className={`font-mono text-xs uppercase tracking-wide ${styles}`}>
+      {label}
+    </span>
+  );
+}
+
+function KeyFacts({ paperId }: { paperId: string }) {
+  const [open, setOpen] = useState(false);
+  const [facts, setFacts] = useState<PaperFact[] | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const load = useCallback(async () => {
+    if (facts !== null) return;
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/papers/${paperId}/facts`);
+      const data = await res.json();
+      setFacts(data.facts ?? []);
+    } catch {
+      setFacts([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [paperId, facts]);
+
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next) load();
+  };
+
+  return (
+    <div className="mt-2">
+      <button
+        onClick={toggle}
+        className="btn-ghost text-xs text-muted hover:text-foreground"
+      >
+        {open ? "▾" : "▸"} Key facts
+      </button>
+      {open && (
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {loading && <span className="text-xs text-muted">Loading...</span>}
+          {!loading && facts?.length === 0 && (
+            <span className="text-xs text-muted">No facts extracted yet.</span>
+          )}
+          {facts?.slice(0, 8).map((f) => (
+            <span
+              key={f.id}
+              title={f.evidence ?? undefined}
+              className="inline-flex max-w-full items-center gap-1 rounded-md border border-edge bg-elevated/50 px-2 py-0.5 text-xs"
+            >
+              <span className="font-mono uppercase tracking-wide text-accent/80">
+                {f.fact_type.replace("_", " ")}
+              </span>
+              <span className="truncate text-muted">{f.key}:</span>
+              <span className="truncate font-medium">{f.value}</span>
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function LibraryView() {
   const [papers, setPapers] = useState<Paper[]>([]);
@@ -35,7 +112,6 @@ export default function LibraryView() {
     };
   }, []);
 
-  // Poll while anything is still processing.
   useEffect(() => {
     if (!papers.some((p) => p.status === "pending" || p.status === "processing")) return;
     const t = setInterval(load, 3000);
@@ -104,36 +180,54 @@ export default function LibraryView() {
     load();
   };
 
+  const retry = async (id: string) => {
+    setBusy(id);
+    setError(null);
+    try {
+      const res = await fetch(`/api/papers/${id}/retry`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Retry failed");
+    } finally {
+      setBusy(null);
+    }
+  };
+
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-10">
-      <h1 className="text-2xl font-semibold tracking-tight">Library</h1>
+    <div className="mx-auto w-full max-w-3xl px-4 py-8 md:px-6 md:py-10">
+      <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+        Library
+      </h1>
       <p className="mt-2 text-muted">
         Search arXiv and Semantic Scholar, paste a DOI or arXiv link, or upload
         PDFs directly.
       </p>
 
-      {/* ---- add papers ---- */}
-      <div className="mt-6 flex gap-2">
+      <div className="mt-6 flex flex-col gap-2 sm:flex-row">
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && search()}
           placeholder="Search papers, or paste a DOI / arXiv ID"
-          className="flex-1 rounded-lg border border-edge bg-transparent px-3 py-2 outline-none focus:border-accent"
+          className="input flex-1"
         />
-        <button
-          onClick={search}
-          disabled={searching}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
-        >
-          {searching ? "..." : "Search"}
-        </button>
-        <button
-          onClick={() => fileRef.current?.click()}
-          className="rounded-lg border border-edge px-4 py-2 text-sm font-medium hover:bg-surface"
-        >
-          Upload PDF
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={search}
+            disabled={searching}
+            className="btn-primary h-11 px-5 text-sm"
+          >
+            {searching ? "..." : "Search"}
+          </button>
+          <button
+            onClick={() => fileRef.current?.click()}
+            className="btn-secondary h-11 px-5 text-sm"
+          >
+            Upload PDF
+          </button>
+        </div>
         <input
           ref={fileRef}
           type="file"
@@ -150,36 +244,29 @@ export default function LibraryView() {
         </p>
       )}
       {error && (
-        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-500">
+        <div className="mt-3 rounded-lg border border-red-500/30 bg-red-500/5 px-3 py-2 text-sm text-red-400">
           {error}
         </div>
       )}
 
-      {/* ---- search results ---- */}
       {results && (
         <section className="mt-8">
           <div className="mb-3 flex items-center justify-between">
-            <h2 className="font-medium">Results</h2>
-            <button
-              onClick={() => setResults(null)}
-              className="text-sm text-muted hover:text-foreground"
-            >
+            <h2 className="font-display font-medium">Results</h2>
+            <button onClick={() => setResults(null)} className="btn-ghost text-sm">
               Clear
             </button>
           </div>
           {results.length === 0 && <p className="text-muted">No matches.</p>}
           <ul className="space-y-3">
             {results.map((r) => (
-              <li
-                key={`${r.source}-${r.source_id}`}
-                className="rounded-xl border border-edge p-4"
-              >
+              <li key={`${r.source}-${r.source_id}`} className="glass glass-interactive p-4">
                 <div className="font-medium">{r.title}</div>
                 <div className="mt-1 text-sm text-muted">
                   {r.authors.slice(0, 4).join(", ")}
                   {r.authors.length > 4 && " et al."}
-                  {r.year && ` - ${r.year}`}
-                  {r.venue && ` - ${r.venue}`}
+                  {r.year && ` · ${r.year}`}
+                  {r.venue && ` · ${r.venue}`}
                 </div>
                 {r.abstract && (
                   <p className="mt-2 line-clamp-3 text-sm text-muted">{r.abstract}</p>
@@ -188,7 +275,7 @@ export default function LibraryView() {
                   <button
                     onClick={() => importPaper(r)}
                     disabled={!r.pdf_url || busy === r.source_id}
-                    className="rounded-lg border border-edge px-3 py-1.5 text-sm hover:bg-surface disabled:opacity-40"
+                    className="btn-secondary px-3 py-1.5 text-sm disabled:opacity-40"
                     title={r.pdf_url ? undefined : "No open-access PDF available"}
                   >
                     {busy === r.source_id ? "Adding..." : "Add to library"}
@@ -198,7 +285,7 @@ export default function LibraryView() {
                       href={r.url}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-sm text-accent hover:underline"
+                      className="text-sm text-accent hover:underline focus-visible:outline-none focus-visible:text-accent"
                     >
                       View source
                     </a>
@@ -210,45 +297,53 @@ export default function LibraryView() {
         </section>
       )}
 
-      {/* ---- library ---- */}
       <section className="mt-10">
-        <h2 className="mb-3 font-medium">
+        <h2 className="mb-3 font-display font-medium">
           Your papers {papers.length > 0 && `(${papers.length})`}
         </h2>
         {loading ? (
           <p className="text-muted">Loading...</p>
         ) : papers.length === 0 ? (
-          <p className="text-muted">Nothing here yet. Add a paper above.</p>
+          <div className="glass p-8 text-center">
+            <p className="text-muted">Nothing here yet. Add a paper above.</p>
+          </div>
         ) : (
-          <ul className="divide-y divide-edge rounded-xl border border-edge">
+          <ul className="glass divide-y divide-edge overflow-hidden">
             {papers.map((p) => (
-              <li key={p.id} className="flex items-start gap-3 px-4 py-3">
+              <li key={p.id} className="flex items-start gap-3 px-4 py-4">
                 <div className="min-w-0 flex-1">
-                  <div className="font-medium">{p.title}</div>
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-medium">{p.title}</div>
+                    <StatusBadge status={p.status} />
+                  </div>
                   <div className="mt-0.5 text-sm text-muted">
                     {p.authors?.slice(0, 3).join(", ")}
                     {p.authors?.length > 3 && " et al."}
-                    {p.year && ` - ${p.year}`}
-                    {p.page_count && ` - ${p.page_count} pages`}
+                    {p.year && ` · ${p.year}`}
+                    {p.page_count && ` · ${p.page_count} pages`}
                   </div>
-                  {p.status !== "ready" && (
-                    <div
-                      className={`mt-1 text-sm ${
-                        p.status === "failed" ? "text-red-500" : "text-muted"
-                      }`}
-                    >
-                      {p.status === "failed"
-                        ? `Failed: ${p.error}`
-                        : "Processing..."}
-                    </div>
+                  {p.status === "failed" && (
+                    <div className="mt-1 text-sm text-red-400">{p.error}</div>
                   )}
+                  {p.status === "ready" && <KeyFacts paperId={p.id} />}
                 </div>
-                <button
-                  onClick={() => remove(p.id)}
-                  className="text-sm text-muted hover:text-red-500"
-                >
-                  Remove
-                </button>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  {p.status === "failed" && p.storage_path && (
+                    <button
+                      onClick={() => retry(p.id)}
+                      disabled={busy === p.id}
+                      className="btn-ghost text-sm text-accent"
+                    >
+                      {busy === p.id ? "Retrying..." : "Retry"}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => remove(p.id)}
+                    className="btn-ghost text-sm hover:text-red-400"
+                  >
+                    Remove
+                  </button>
+                </div>
               </li>
             ))}
           </ul>

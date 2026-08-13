@@ -29,8 +29,17 @@ async function runChecks(): Promise<Check[]> {
   const provider = process.env.EMBEDDING_PROVIDER || "voyage";
   envVar(provider === "openai" ? "OPENAI_API_KEY" : "VOYAGE_API_KEY");
   envVar("SEMANTIC_SCHOLAR_API_KEY", false);
+  envVar("NEXT_PUBLIC_SITE_URL", false);
 
-  // ---- database ----
+  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (process.env.VERCEL === "1" && siteUrl?.includes("localhost")) {
+    checks.push({
+      name: "Production site URL",
+      ok: false,
+      detail: "NEXT_PUBLIC_SITE_URL is localhost on Vercel — set it to your deployment URL",
+    });
+  }
+
   try {
     const supabase = await createClient();
     const {
@@ -54,7 +63,6 @@ async function runChecks(): Promise<Check[]> {
 
     const { error: rpcError } = await supabase.rpc("match_chunks", {
       query_embedding: new Array(1024).fill(0),
-      match_user_id: user?.id ?? "00000000-0000-0000-0000-000000000000",
       match_count: 1,
       filter_paper_ids: null,
       min_similarity: 0,
@@ -65,15 +73,20 @@ async function runChecks(): Promise<Check[]> {
       detail: rpcError ? rpcError.message : "callable (pgvector installed)",
     });
 
-    const { data: buckets, error: bucketError } = await supabase.storage.listBuckets();
+    const { error: bucketError } = await supabase.storage.from("papers").list("", {
+      limit: 1,
+    });
+    const bucketMissing =
+      bucketError?.message?.toLowerCase().includes("not found") ||
+      bucketError?.message?.toLowerCase().includes("does not exist");
     checks.push({
       name: "storage bucket: papers",
-      ok: !bucketError && Boolean(buckets?.some((b) => b.name === "papers")),
-      detail: bucketError
-        ? bucketError.message
-        : buckets?.some((b) => b.name === "papers")
-          ? "exists"
-          : "MISSING - run the migration",
+      ok: !bucketMissing,
+      detail: bucketMissing
+        ? "MISSING - run the storage section of the migration"
+        : bucketError
+          ? bucketError.message
+          : "reachable",
     });
   } catch (err) {
     checks.push({
@@ -91,19 +104,21 @@ export default async function SetupPage() {
   const failing = checks.filter((c) => !c.ok).length;
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-16">
-      <h1 className="text-2xl font-semibold tracking-tight">Setup check</h1>
+    <main className="mx-auto max-w-2xl px-4 py-10 md:px-6 md:py-16">
+      <h1 className="font-display text-2xl font-semibold tracking-tight md:text-3xl">
+        Setup check
+      </h1>
       <p className="mt-2 text-muted">
         {failing === 0
           ? "Everything looks configured. You can start adding papers."
           : `${failing} item${failing === 1 ? "" : "s"} still need attention.`}
       </p>
 
-      <ul className="mt-8 divide-y divide-edge rounded-xl border border-edge">
+      <ul className="glass mt-8 divide-y divide-edge overflow-hidden">
         {checks.map((c) => (
           <li key={c.name} className="flex items-start gap-3 px-4 py-3">
-            <span className={c.ok ? "text-green-500" : "text-red-500"}>
-              {c.ok ? "OK" : "!!"}
+            <span className={c.ok ? "text-accent" : "text-red-400"}>
+              {c.ok ? "✓" : "!"}
             </span>
             <div className="min-w-0">
               <div className="font-mono text-sm">{c.name}</div>
@@ -113,8 +128,11 @@ export default async function SetupPage() {
         ))}
       </ul>
 
-      <Link href="/chat" className="mt-8 inline-block text-accent hover:underline">
-        Go to chat
+      <Link
+        href="/chat"
+        className="mt-8 inline-block text-accent hover:underline focus-visible:outline-none"
+      >
+        Go to chat →
       </Link>
     </main>
   );

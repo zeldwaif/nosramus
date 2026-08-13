@@ -3,13 +3,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Markdown from "./Markdown";
+import StreamingText from "./StreamingText";
 import Citations from "./Citations";
+import Contradictions from "./Contradictions";
 import PaperPicker from "./PaperPicker";
-import type { Citation, Message } from "@/lib/types";
+import SuggestedPrompts from "./SuggestedPrompts";
+import { useSmoothedText } from "@/lib/useSmoothedText";
+import type { Citation, Contradiction, Message } from "@/lib/types";
 
-interface Draft {
-  content: string;
+type StreamPhase = "idle" | "retrieving" | "writing";
+
+interface PendingReply {
   citations: Citation[];
+  content: string;
+  contradictions: Contradiction[];
+  conversationId: string;
 }
 
 export default function ChatView({
@@ -25,19 +33,55 @@ export default function ChatView({
   const [messages, setMessages] = useState<Message[]>(initialMessages);
   const [paperIds, setPaperIds] = useState<string[]>(initialPaperIds);
   const [input, setInput] = useState("");
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [phase, setPhase] = useState<StreamPhase>("idle");
+  const [draftCitations, setDraftCitations] = useState<Citation[]>([]);
+  const [pendingReply, setPendingReply] = useState<PendingReply | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const { displayedText, push, finish, reset, isCaughtUp } = useSmoothedText();
+
+  const streaming = phase !== "idle";
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, draft]);
+  }, [messages, displayedText, phase]);
+
+  useEffect(() => {
+    if (!pendingReply || !isCaughtUp()) return;
+
+    setMessages((m) => [
+      ...m,
+      {
+        id: `local-a-${Date.now()}`,
+        conversation_id: pendingReply.conversationId,
+        role: "assistant",
+        content: pendingReply.content,
+        citations: pendingReply.citations,
+        contradictions: pendingReply.contradictions,
+        created_at: new Date().toISOString(),
+      },
+    ]);
+    setPendingReply(null);
+    setDraftCitations([]);
+    setPhase("idle");
+    reset();
+  }, [pendingReply, displayedText, isCaughtUp, reset]);
 
   const scrollToCitation = (n: number) => {
     document.getElementById(`cite-${n}`)?.scrollIntoView({
       behavior: "smooth",
       block: "center",
+    });
+  };
+
+  const updatePaperScope = async (ids: string[]) => {
+    setPaperIds(ids);
+    if (!conversationId) return;
+    await fetch(`/api/conversations/${conversationId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paperIds: ids }),
     });
   };
 
@@ -48,6 +92,10 @@ export default function ChatView({
     setInput("");
     setError(null);
     setBusy(true);
+    reset();
+    setPendingReply(null);
+    setDraftCitations([]);
+    setPhase("retrieving");
     setMessages((m) => [
       ...m,
       {
@@ -59,7 +107,6 @@ export default function ChatView({
         created_at: new Date().toISOString(),
       },
     ]);
-    setDraft({ content: "", citations: [] });
 
     try {
       const res = await fetch("/api/chat", {
@@ -90,27 +137,20 @@ export default function ChatView({
           const event = JSON.parse(line);
 
           if (event.type === "start") newConversationId = event.conversationId;
-          if (event.type === "citations")
-            setDraft((d) => ({ ...(d ?? { content: "" }), citations: event.citations }));
-          if (event.type === "delta")
-            setDraft((d) => ({
-              content: (d?.content ?? "") + event.text,
-              citations: d?.citations ?? [],
-            }));
+          if (event.type === "citations") {
+            setDraftCitations(event.citations);
+            setPhase("writing");
+          }
+          if (event.type === "delta") push(event.text);
           if (event.type === "error") throw new Error(event.error);
           if (event.type === "done") {
-            setMessages((m) => [
-              ...m,
-              {
-                id: `local-a-${Date.now()}`,
-                conversation_id: event.conversationId,
-                role: "assistant",
-                content: event.content,
-                citations: event.citations,
-                created_at: new Date().toISOString(),
-              },
-            ]);
-            setDraft(null);
+            finish();
+            setPendingReply({
+              content: event.content,
+              citations: event.citations,
+              contradictions: event.contradictions ?? [],
+              conversationId: event.conversationId,
+            });
             newConversationId = event.conversationId;
           }
         }
@@ -122,34 +162,40 @@ export default function ChatView({
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
-      setDraft(null);
+      setPhase("idle");
+      setPendingReply(null);
+      reset();
     } finally {
       setBusy(false);
     }
   };
 
-  const empty = messages.length === 0 && !draft;
+  const empty = messages.length === 0 && !streaming;
 
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto w-full max-w-3xl px-6 py-8">
+        <div className="mx-auto w-full max-w-3xl px-4 py-8 md:px-6">
           {empty && (
-            <div className="mt-24 text-center">
-              <h1 className="text-2xl font-semibold tracking-tight">
-                What do you want to know?
-              </h1>
-              <p className="mx-auto mt-3 max-w-md text-muted">
-                Ask a question and Nosramus will answer from the papers in your
-                library, citing the passages it used.
+            <div className="mt-10 md:mt-16">
+              <p className="font-mono text-[11px] uppercase tracking-[0.22em] text-accent/80">
+                Your library
               </p>
+              <h1 className="mt-3 font-display text-2xl font-semibold tracking-tight md:text-3xl">
+                What should we look up?
+              </h1>
+              <p className="mt-3 max-w-md text-muted">
+                Ask in plain language. Answers come from papers you imported, with
+                citations tied to the retrieved passage.
+              </p>
+              <SuggestedPrompts onSelect={setInput} />
             </div>
           )}
 
           {messages.map((m) =>
             m.role === "user" ? (
               <div key={m.id} className="mb-8 flex justify-end">
-                <div className="max-w-[85%] rounded-2xl bg-surface px-4 py-2.5">
+                <div className="max-w-[85%] rounded-2xl border border-edge bg-elevated/80 px-4 py-2.5 text-sm">
                   {m.content}
                 </div>
               </div>
@@ -161,26 +207,37 @@ export default function ChatView({
                   onCite={scrollToCitation}
                 />
                 <Citations citations={m.citations} />
+                <Contradictions contradictions={m.contradictions ?? []} />
               </div>
             )
           )}
 
-          {draft && (
+          {streaming && (
             <div className="mb-10">
-              {draft.content ? (
-                <Markdown
-                  content={draft.content}
-                  citations={draft.citations}
-                  onCite={scrollToCitation}
-                />
-              ) : (
-                <p className="animate-pulse text-muted">Searching your library...</p>
+              {phase === "retrieving" && !displayedText && (
+                <div className="flex items-center gap-2.5 text-sm text-muted">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
+                  Searching your library...
+                </div>
+              )}
+              {(phase === "writing" || displayedText) && (
+                <>
+                  <StreamingText
+                    content={displayedText}
+                    citations={draftCitations}
+                    onCite={scrollToCitation}
+                    showCursor={!pendingReply || !isCaughtUp()}
+                  />
+                  {draftCitations.length > 0 && (
+                    <Citations citations={draftCitations} />
+                  )}
+                </>
               )}
             </div>
           )}
 
           {error && (
-            <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-500">
+            <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/5 px-4 py-3 text-sm text-red-400">
               {error}
             </div>
           )}
@@ -189,12 +246,12 @@ export default function ChatView({
         </div>
       </div>
 
-      <div className="border-t border-edge bg-background">
-        <div className="mx-auto w-full max-w-3xl px-6 py-4">
+      <div className="border-t border-edge bg-background/80 backdrop-blur-md">
+        <div className="mx-auto w-full max-w-3xl px-4 py-4 md:px-6">
           <div className="mb-2">
-            <PaperPicker selected={paperIds} onChange={setPaperIds} />
+            <PaperPicker selected={paperIds} onChange={updatePaperScope} />
           </div>
-          <div className="flex items-end gap-2 rounded-2xl border border-edge px-3 py-2 focus-within:border-accent">
+          <div className="glass flex items-end gap-2 rounded-2xl px-3 py-2 focus-within:border-[rgba(134,239,172,0.35)] focus-within:shadow-[0_0_20px_rgba(134,239,172,0.08)]">
             <textarea
               value={input}
               onChange={(e) => setInput(e.target.value)}
@@ -206,14 +263,14 @@ export default function ChatView({
               }}
               rows={1}
               placeholder="Ask about your papers..."
-              className="max-h-40 flex-1 resize-none bg-transparent py-1.5 outline-none placeholder:text-muted"
+              className="max-h-40 flex-1 resize-none bg-transparent py-2 outline-none placeholder:text-muted"
             />
             <button
               onClick={send}
               disabled={busy || !input.trim()}
-              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-white disabled:opacity-40"
+              className="btn-primary mb-0.5 h-9 shrink-0 px-4 text-sm"
             >
-              {busy ? "..." : "Send"}
+              {busy ? "Working" : "Send"}
             </button>
           </div>
         </div>

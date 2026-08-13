@@ -44,13 +44,13 @@ export default function PaperPicker({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="rounded-full border border-edge px-3 py-1 text-xs text-muted hover:bg-surface"
+        className="rounded-full border border-edge px-3 py-1 font-mono text-xs tracking-wide text-muted transition-colors hover:border-edge-hover hover:bg-white/5 hover:text-foreground"
       >
         {label}
       </button>
 
       {open && (
-        <div className="absolute bottom-full z-10 mb-2 max-h-72 w-80 overflow-y-auto rounded-xl border border-edge bg-background p-2 shadow-lg">
+        <div className="glass absolute bottom-full z-10 mb-2 max-h-72 w-80 overflow-y-auto p-2 shadow-xl">
           {papers.length === 0 ? (
             <p className="px-2 py-3 text-sm text-muted">
               No processed papers yet. Add some from the Library.
@@ -59,20 +59,20 @@ export default function PaperPicker({
             <>
               <button
                 onClick={() => onChange([])}
-                className="mb-1 w-full rounded-md px-2 py-1.5 text-left text-sm text-muted hover:bg-surface"
+                className="btn-ghost mb-1 w-full px-2 py-1.5 text-left text-sm"
               >
                 Search everything
               </button>
               {papers.map((p) => (
                 <label
                   key={p.id}
-                  className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface"
+                  className="flex cursor-pointer items-start gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-white/5"
                 >
                   <input
                     type="checkbox"
                     checked={selected.includes(p.id)}
                     onChange={() => toggle(p.id)}
-                    className="mt-1"
+                    className="mt-1 accent-[var(--accent)]"
                   />
                   <span className="min-w-0">
                     <span className="line-clamp-2">{p.title}</span>

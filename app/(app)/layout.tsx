@@ -15,9 +15,11 @@ export default async function AppLayout({
   if (!user) redirect("/login");
 
   return (
-    <div className="flex h-screen">
+    <div className="app-bg flex h-screen overflow-hidden">
       <Sidebar email={user.email ?? ""} />
-      <main className="min-w-0 flex-1 overflow-hidden">{children}</main>
+      <div className="app-bg-main flex min-w-0 flex-1 flex-col overflow-hidden pt-14 md:pt-0">
+        <main className="min-h-0 flex-1 overflow-hidden">{children}</main>
+      </div>
     </div>
   );
 }
