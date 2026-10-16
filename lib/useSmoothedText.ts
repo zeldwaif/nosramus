@@ -16,6 +16,12 @@ export function useSmoothedText() {
   const rafRef = useRef<number | null>(null);
   const lastFrameRef = useRef<number | null>(null);
   const streamDoneRef = useRef(false);
+  // The frame callback schedules itself through this ref, so it always runs the
+  // latest `tick` without referencing itself during its own declaration.
+  const tickRef = useRef<(now: number) => void>(() => {});
+  const scheduleFrame = () => {
+    rafRef.current = requestAnimationFrame((now) => tickRef.current(now));
+  };
 
   const stopLoop = useCallback(() => {
     if (rafRef.current != null) {
@@ -55,9 +61,9 @@ export function useSmoothedText() {
       }
 
       charAccRef.current += rate * dt;
-      let chars = Math.floor(charAccRef.current);
+      const chars = Math.floor(charAccRef.current);
       if (chars < 1) {
-        rafRef.current = requestAnimationFrame(tick);
+        scheduleFrame();
         return;
       }
 
@@ -71,16 +77,20 @@ export function useSmoothedText() {
 
       displayedLenRef.current = target;
       setDisplayedText(pending.slice(0, target));
-      rafRef.current = requestAnimationFrame(tick);
+      scheduleFrame();
     },
     [stopLoop]
   );
 
+  useEffect(() => {
+    tickRef.current = tick;
+  }, [tick]);
+
   const ensureLoop = useCallback(() => {
     if (rafRef.current == null) {
-      rafRef.current = requestAnimationFrame(tick);
+      rafRef.current = requestAnimationFrame((now) => tickRef.current(now));
     }
-  }, [tick]);
+  }, []);
 
   const push = useCallback(
     (chunk: string) => {

@@ -50,6 +50,9 @@ export default function ChatView({
   useEffect(() => {
     if (!pendingReply || !isCaughtUp()) return;
 
+    // Commit the reply once the reveal animation (driven by requestAnimationFrame,
+    // outside React) has caught up with the streamed text.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMessages((m) => [
       ...m,
       {

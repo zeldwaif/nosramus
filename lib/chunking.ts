@@ -25,6 +25,32 @@ function detectSection(line: string): string | null {
 }
 
 /**
+ * Splits text on sentence boundaries, falling back to word boundaries for any
+ * sentence that is still over budget (tables, equations, missing punctuation).
+ */
+function splitOversized(text: string, maxTokens: number): string[] {
+  const out: string[] = [];
+  for (const sentence of text.split(/(?<=[.!?])\s+/)) {
+    if (estimateTokens(sentence) <= maxTokens) {
+      out.push(sentence);
+      continue;
+    }
+    let piece = "";
+    for (const word of sentence.split(/\s+/)) {
+      const next = piece ? `${piece} ${word}` : word;
+      if (estimateTokens(next) > maxTokens && piece) {
+        out.push(piece);
+        piece = word;
+      } else {
+        piece = next;
+      }
+    }
+    if (piece) out.push(piece);
+  }
+  return out;
+}
+
+/**
  * Paragraph-aware chunker. Keeps paragraphs intact where possible, tracks the
  * page and the most recent section heading, and overlaps chunks so a fact that
  * straddles a boundary is still retrievable.
@@ -54,9 +80,11 @@ export function chunkPages(
     // Carry the tail of this chunk into the next one for context overlap.
     const tail: string[] = [];
     let tailTokens = 0;
-    for (let i = buf.length - 1; i >= 0 && tailTokens < overlapTokens; i--) {
+    for (let i = buf.length - 1; i >= 0; i--) {
+      const t = estimateTokens(buf[i]);
+      if (tailTokens + t > overlapTokens) break;
       tail.unshift(buf[i]);
-      tailTokens += estimateTokens(buf[i]);
+      tailTokens += t;
     }
     buf = tail;
     bufTokens = tailTokens;
@@ -80,8 +108,7 @@ export function chunkPages(
 
       // A single oversized paragraph gets split on sentence boundaries.
       if (tokens > targetTokens * 1.5) {
-        const sentences = para.split(/(?<=[.!?])\s+/);
-        for (const s of sentences) {
+        for (const s of splitOversized(para, targetTokens)) {
           if (bufTokens + estimateTokens(s) > targetTokens && bufTokens > 0) flush();
           if (bufPage === null || bufTokens === 0) bufPage = page;
           buf.push(s);
