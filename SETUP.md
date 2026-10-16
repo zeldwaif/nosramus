@@ -1,7 +1,7 @@
-# What you need to do
+# Setup guide
 
-Everything below is work that can't be done from inside the codebase — accounts,
-keys, and dashboard settings. Budget about 20 minutes. Steps 1–5 are required;
+How to run your own copy of Nosramus: the accounts, API keys and dashboard
+settings it needs. It takes about 20 minutes. Steps 1–5 are required and
 step 6 is optional.
 
 ---
